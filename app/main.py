@@ -13,6 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI
 from config.settings import settings  # 우리가 만든 설정 파일(config/settings.py)을 가져옵니다.
+from app.ai import anime_recommender
 
 # 1. FastAPI 앱(서버) 만들기
 # title과 version은 설정 파일에서 가져온 값을 씁니다.
@@ -34,6 +35,18 @@ def read_root():
         "message": "환영합니다! AI Anime Generator 서버입니다.",
         "status": "200",
         "docs_url": "/docs"  # 자동으로 만들어지는 설명서 주소를 알려줍니다.
+    }
+
+@app.get("/test-generate")
+async def test_generate():
+    response = await anime_recommender.recommend("판타지", "슬픈 내용")
+
+    return {
+        "message": "테스트가 성공적으로 실행되었습니다.",
+        "status": "200",
+        "data": {
+            "response": response
+        }
     }
 
 # -----------------------------------------------------------------------------

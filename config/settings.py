@@ -8,8 +8,9 @@ import os
 from dotenv import load_dotenv
 
 # 1. .env 파일을 찾아서 내용을 불러옵니다.
-# 이제 os.getenv("변수이름")을 쓰면 .env에 적힌 값을 가져올 수 있습니다.
-load_dotenv()
+# settings.py 파일이 있는 폴더(config) 안에서 .env를 찾습니다.
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(env_path)
 
 class Settings:
     """
@@ -25,6 +26,7 @@ class Settings:
     # .env 파일에서 "GOOGLE_API_KEY"라는 이름의 값을 가져옵니다.
     # 만약 파일에 값이 없으면 "" (빈 문자열)을 대신 넣습니다.
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
+    GOOGLE_API_MODEL: str = os.getenv("GOOGLE_API_MODEL", "gemini-1.5-flash")
 
     # 필요하면 여기에 데이터베이스 주소 등을 계속 추가하면 됩니다.
     # DB_URL: str = os.getenv("DB_URL", "sqlite:///./test.db")
