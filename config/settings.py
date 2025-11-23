@@ -26,7 +26,11 @@ class Settings:
     # .env 파일에서 "GOOGLE_API_KEY"라는 이름의 값을 가져옵니다.
     # 만약 파일에 값이 없으면 "" (빈 문자열)을 대신 넣습니다.
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
-    GOOGLE_API_MODEL: str = os.getenv("GOOGLE_API_MODEL", "gemini-1.5-flash")
+    GOOGLE_API_TEXT_MODEL: str = os.getenv("GOOGLE_API_TEXT_MODEL", "gemini-2.5-flash")
+    GOOGLE_API_IMAGE_MODEL: str = os.getenv("GOOGLE_API_IMAGE_MODEL", "gemini-2.5-flash-image")
+    
+    # OpenAI API 키
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 
     # 필요하면 여기에 데이터베이스 주소 등을 계속 추가하면 됩니다.
     # DB_URL: str = os.getenv("DB_URL", "sqlite:///./test.db")

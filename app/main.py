@@ -11,7 +11,7 @@ import os
 # 이렇게 해야 'config' 폴더를 찾을 수 있습니다.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from config.settings import settings  # 우리가 만든 설정 파일(config/settings.py)을 가져옵니다.
 from app.ai import anime_recommender
 
@@ -37,17 +37,40 @@ def read_root():
         "docs_url": "/docs"  # 자동으로 만들어지는 설명서 주소를 알려줍니다.
     }
 
-@app.get("/test-generate")
-async def test_generate():
-    response = await anime_recommender.recommend("판타지", "슬픈 내용")
 
+@app.post("/generate-frame")
+async def generate_frame_endpoint(file: UploadFile = File(...), prompt: str = ""):
+    """
+    만화 컷 이미지를 업로드하면 말풍선과 효과음을 제거한 깨끗한 프레임을 생성합니다.
+    
+    Args:
+        file: 업로드할 이미지 파일 (jpg, png 등)
+        prompt: 추가 요청사항 (선택)
+    
+    Returns:
+        생성된 프레임 이미지 (base64 인코딩)
+    """
+    import base64
+    
+    # 이미지 파일 읽기
+    image_data = await file.read()
+    
+    # AI에게 프레임 생성 요청 (동기 함수)
+    result_bytes = anime_recommender.generate_frame(image_data, prompt)
+    
+    # 이미지 바이트를 base64로 인코딩
+    result_b64 = base64.b64encode(result_bytes).decode("utf-8")
+    
     return {
-        "message": "테스트가 성공적으로 실행되었습니다.",
+        "message": "프레임 생성이 완료되었습니다.",
         "status": "200",
         "data": {
-            "response": response
+            "original_filename": file.filename,
+            "generated_image": f"data:image/png;base64,{result_b64}"
         }
     }
+
+
 
 # -----------------------------------------------------------------------------
 # 실행 방법 (터미널에서 아래 명령어를 입력하세요)
