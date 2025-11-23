@@ -1,7 +1,8 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import PromptTemplate
+from langchain_core.messages import HumanMessage
 from config.settings import settings
 from openai import OpenAI
+import base64
 
 class AnimeRecommender:
     # 1. 생성자: 필요한 도구들을 준비합니다.
@@ -11,10 +12,13 @@ class AnimeRecommender:
             model=settings.GOOGLE_API_TEXT_MODEL, 
             temperature=0.7
         )
-        self.prompt = "Remove all speech bubbles, text, sound effects, and onomatopoeia from this manga panel. Fill the removed areas naturally with the surrounding background and art style. Keep all characters and scenery intact. This will be used as a clean animation frame, so make it look professional and seamless without any text or effects."
+        self.prompt = "Remove all speech bubbles, text, sound effects, and onomatopoeia from this manga panel. Fill the removed areas naturally with the surrounding background and art style. Keep all characters and scenery intact. This will be used as a clean animation frame, so make it look professional and seamless without any text or effects. and resize to 16:9 ratio, 1024x576."
         
-        # OpenAI 클라이언트
-        self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        self.image_llm = ChatGoogleGenerativeAI(
+            google_api_key=settings.GOOGLE_API_KEY, 
+            model=settings.GOOGLE_API_IMAGE_MODEL,
+            temperature=0.7
+        )
     
     # 2. 메서드: 만화 컷에서 깨끗한 프레임 생성
     def generate_frame(self, image_bytes: bytes, additional_prompt: str = ""):
@@ -29,7 +33,7 @@ class AnimeRecommender:
             생성된 이미지 바이트 데이터 (16:9 비율, 1024x576)
         """
         import io
-        from PIL import Image, ImageDraw
+        from PIL import Image
         import requests
         
         # 추가 프롬프트가 있으면 결합
@@ -42,47 +46,24 @@ class AnimeRecommender:
         if original_image.mode != 'RGBA':
             original_image = original_image.convert('RGBA')
         
-        # 1024x1024로 리사이즈
-        square_size = 1024
-        original_image = original_image.resize((square_size, square_size), Image.Resampling.LANCZOS)
-        
-        # 마스크 생성 - 중앙 영역을 투명하게 (편집할 영역)
-        mask = Image.new('L', (square_size, square_size), 0)  # 검은색 배경
-        draw = ImageDraw.Draw(mask)
-        # 중앙 80% 영역을 흰색으로 (편집 대상)
-        margin = int(square_size * 0.1)
-        draw.rectangle([margin, margin, square_size - margin, square_size - margin], fill=255)
-        
         # PNG로 변환
         image_buffer = io.BytesIO()
         original_image.save(image_buffer, format='PNG')
         image_buffer.seek(0)
         
-        mask_buffer = io.BytesIO()
-        mask_image = Image.new('RGBA', (square_size, square_size), (0, 0, 0, 0))
-        mask_image.putalpha(mask)
-        mask_image.save(mask_buffer, format='PNG')
-        mask_buffer.seek(0)
-        
         try:
-            # OpenAI 이미지 편집 API 호출
-            response = self.openai_client.images.edit(
-                image=image_buffer,
-                mask=mask_buffer,
-                prompt=final_prompt,
-                n=1,
-                size="1024x1024"
-            )
+            message_with_image = HumanMessage(content=[
+                {"type": "text", "text": final_prompt},
+                {"type" : "image_url", "image_url" : {"url" : "data:image/png;base64," + base64.b64encode(image_buffer.getvalue()).decode("utf-8")}}
+            ])
+
+            # nanabanana api 호출
+            response = self.image_llm.invoke([message_with_image])
             
             # 생성된 이미지 URL에서 다운로드
             image_url = response.data[0].url
             image_response = requests.get(image_url)
             generated_image = Image.open(io.BytesIO(image_response.content))
-            
-            # 16:9 비율로 크롭
-            target_height = int(1024 / (16/9))  # 576
-            top = (1024 - target_height) // 2
-            generated_image = generated_image.crop((0, top, 1024, top + target_height))
             
             # 최종 이미지를 바이트로 변환
             output_buffer = io.BytesIO()
@@ -97,7 +78,6 @@ class AnimeRecommender:
             target_height = int(1024 / (16/9))
             top = (1024 - target_height) // 2
             cropped = original_image.crop((0, top, 1024, top + target_height))
-            
             output_buffer = io.BytesIO()
             cropped.save(output_buffer, format='PNG')
             output_buffer.seek(0)
