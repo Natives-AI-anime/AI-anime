@@ -48,8 +48,6 @@ pip install 뒤에 설치하고자 하는 라이브러리 이름을 적어주면
 
 이 때, 우리는 각 디렉터리에
 
- ![image-20251123174751602](C:\Users\rladu\AppData\Roaming\Typora\typora-user-images\image-20251123174751602.png)
-
-를 생성해줘야 패키지로 인식을 하게 된다.
+\_\_init\_\_.py 파일을 생성해주어 패키지로 인식을 하게 된다.
 
 그리고 .gitignore 파일을 만들어 루트 디렉터리에 추가하여 아까 말한 config 패키지에 들어가는 여러 보안 요소들과 환경 변수 파일 등을 git에 업로드하지 않게 하면 마무리가 된다.

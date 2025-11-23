@@ -32,7 +32,7 @@ def read_root():
     # 딕셔너리({}) 형태로 데이터를 돌려주면, 브라우저에는 JSON(글자) 형태로 보입니다.
     return {
         "message": "환영합니다! AI Anime Generator 서버입니다.",
-        "status": "정상 작동 중",
+        "status": "200",
         "docs_url": "/docs"  # 자동으로 만들어지는 설명서 주소를 알려줍니다.
     }
 
