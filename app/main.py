@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, UploadFile, File
 from config.settings import settings  # 우리가 만든 설정 파일(config/settings.py)을 가져옵니다.
-from app.ai import anime_recommender
+from app.frame_generator import frame_generator
 
 # 1. FastAPI 앱(서버) 만들기
 # title과 version은 설정 파일에서 가져온 값을 씁니다.
@@ -39,7 +39,7 @@ def read_root():
 
 
 @app.post("/generate-frame")
-async def generate_frame_endpoint(file: UploadFile = File(...), prompt: str = ""):
+async def generate_frame_endpoint(file: UploadFile = File(...),  prompt: str = ""):
     """
     만화 컷 이미지를 업로드하면 말풍선과 효과음을 제거한 깨끗한 프레임을 생성합니다.
     
@@ -56,7 +56,7 @@ async def generate_frame_endpoint(file: UploadFile = File(...), prompt: str = ""
     image_data = await file.read()
     
     # AI에게 프레임 생성 요청 (동기 함수)
-    result_bytes = anime_recommender.generate_frame(image_data, prompt)
+    result_bytes = frame_generator.generate_frame(image_data, prompt)
     
     # 이미지 바이트를 base64로 인코딩
     result_b64 = base64.b64encode(result_bytes).decode("utf-8")

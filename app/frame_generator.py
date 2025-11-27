@@ -3,8 +3,11 @@ from langchain_core.messages import HumanMessage
 from config.settings import settings
 from openai import OpenAI
 import base64
+import io
+from PIL import Image
+import requests
 
-class AnimeRecommender:
+class FrameGenerator:
     # 1. 생성자: 필요한 도구들을 준비합니다.
     def __init__(self):
         self.text_llm = ChatGoogleGenerativeAI(
@@ -32,9 +35,6 @@ class AnimeRecommender:
         Returns:
             생성된 이미지 바이트 데이터 (16:9 비율, 1024x576)
         """
-        import io
-        from PIL import Image
-        import requests
         
         # 추가 프롬프트가 있으면 결합
         final_prompt = f"{self.prompt}. {additional_prompt}" if additional_prompt else self.prompt
@@ -57,7 +57,7 @@ class AnimeRecommender:
                 {"type" : "image_url", "image_url" : {"url" : "data:image/png;base64," + base64.b64encode(image_buffer.getvalue()).decode("utf-8")}}
             ])
 
-            # nanabanana api 호출
+            # Vision AI 호출
             response = self.image_llm.invoke([message_with_image])
             
             # 생성된 이미지 URL에서 다운로드
@@ -73,7 +73,7 @@ class AnimeRecommender:
             return output_buffer.getvalue()
             
         except Exception as e:
-            print(f"OpenAI API 에러: {e}")
+            print(f"이미지 생성 에러: {e}")
             # 에러 발생 시 원본 이미지를 16:9로 크롭해서 반환
             target_height = int(1024 / (16/9))
             top = (1024 - target_height) // 2
@@ -84,6 +84,5 @@ class AnimeRecommender:
             
             return output_buffer.getvalue()
 
-
 # 인스턴스 생성 (싱글톤 디자인 패턴)
-anime_recommender = AnimeRecommender()
+frame_generator = FrameGenerator()
