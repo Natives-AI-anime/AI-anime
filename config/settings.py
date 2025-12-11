@@ -32,6 +32,14 @@ class Settings:
     # OpenAI API 키
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 
+    # Google Cloud 설정
+    GOOGLE_CLOUD_PROJECT: str = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    GOOGLE_CLOUD_LOCATION: str = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+
+    # Kling AI API 키 (Access Key & Secret Key)
+    KLING_ACCESS_KEY: str = os.getenv("KLING_ACCESS_KEY", "")
+    KLING_SECRET_KEY: str = os.getenv("KLING_SECRET_KEY", "")
+
     # 필요하면 여기에 데이터베이스 주소 등을 계속 추가하면 됩니다.
     # DB_URL: str = os.getenv("DB_URL", "sqlite:///./test.db")
 
