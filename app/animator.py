@@ -9,6 +9,9 @@ from typing import Optional
 from PIL import Image
 import io
 import cv2
+from typing import List
+
+from app.frame_generator import extract_frames_from_url
 
 from config.settings import settings
 
@@ -49,11 +52,12 @@ class Animator:
     
     def generate_video_from_images(
         self, 
+        project_name: str,
         start_image_bytes: bytes, 
         end_image_bytes: bytes,
         prompt: str = "Create a smooth anime-style animation transitioning from the first frame to the second frame",
         duration: int = 5
-    ) -> Optional[str]:
+    ) -> Optional[List[str]]:
         """
         두 이미지를 시작과 끝 프레임으로 사용하여 비디오 생성
         
@@ -64,7 +68,7 @@ class Animator:
             duration: 비디오 길이 (초, 5 또는 10)
             
         Returns:
-            생성된 비디오 파일 경로 또는 None
+            생성된 프레임 파일 경로 리스트 또는 None
         """
         try:
             print("Kling AI API 호출 중...")
@@ -151,17 +155,12 @@ class Animator:
                         print("비디오 URL을 가져올 수 없습니다")
                         return None
                     
-                    # 비디오 다운로드
-                    print("비디오 다운로드 중...")
-                    video_response = requests.get(video_url, timeout=60)
-                    video_response.raise_for_status()
+                    # 비디오 다운로드 대신 프레임 추출
+                    print("비디오에서 프레임 추출 중...")
+                    output_dir = os.path.join("generated_frames", project_name, task_id)
+                    frames = extract_frames_from_url(video_url, output_dir)
                     
-                    # 임시 파일로 저장
-                    temp_path = "temp_kling_video.mp4"
-                    with open(temp_path, "wb") as f:
-                        f.write(video_response.content)
-                    
-                    return temp_path
+                    return frames
                     
                 elif task_status == "failed":
                     print("\n비디오 생성 실패")
