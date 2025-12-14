@@ -288,7 +288,7 @@ class Animator:
                             
                         return frames
                         
-                    except Exception as e:
+                    except Exception as e:  
                         print(f"비디오 다운로드 및 추출 실패: {e}")
                         return None
                     
