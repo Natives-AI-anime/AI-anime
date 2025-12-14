@@ -8,6 +8,8 @@ Kling AI를 활용한 AI 애니메이션 비디오 생성 시스템
 
 ## 🛠️ 기술 스택
 
+![Tech Stack](./tech_stack.png)
+
 ### Backend
 
 - **언어**: Python 3.x
