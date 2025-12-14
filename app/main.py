@@ -11,9 +11,9 @@ import os
 # 이렇게 해야 'config' 폴더를 찾을 수 있습니다.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from config.settings import settings  # 우리가 만든 설정 파일(config/settings.py)을 가져옵니다.
-from app.frame_generator import frame_generator
+from app.animator import animator
 
 # 1. FastAPI 앱(서버) 만들기
 # title과 version은 설정 파일에서 가져온 값을 씁니다.
@@ -56,7 +56,7 @@ async def generate_frame_endpoint(file: UploadFile = File(...),  prompt: str = "
     image_data = await file.read()
     
     # AI에게 프레임 생성 요청 (동기 함수)
-    result_bytes = frame_generator.generate_frame(image_data, prompt)
+    result_bytes = animator.generate_frame(image_data, prompt)
     
     # 이미지 바이트를 base64로 인코딩
     result_b64 = base64.b64encode(result_bytes).decode("utf-8")
@@ -72,7 +72,82 @@ async def generate_frame_endpoint(file: UploadFile = File(...),  prompt: str = "
 
 
 
-# -----------------------------------------------------------------------------
-# 실행 방법 (터미널에서 아래 명령어를 입력하세요)
-# -----------------------------------------------------------------------------
-# uvicorn app.main:app --reload
+@app.post("/generate-video")
+async def generate_video_endpoint(
+    start_image: UploadFile = File(...),
+    end_image: UploadFile = File(...),
+    prompt: str = Form(...),
+    project_name: str = Form(...)
+):
+    """
+    비디오 생성 엔드포인트
+    
+    Args:
+        start_image: 시작 프레임 이미지
+        end_image: 끝 프레임 이미지
+        prompt: 비디오 생성 프롬프트
+        project_name: 프로젝트 이름
+    """
+    import shutil
+    
+    # 1. 이미지 읽기
+    start_bytes = await start_image.read()
+    end_bytes = await end_image.read()
+    
+    # 2. Animator 호출
+    # 결과는 생성된 프레임 파일들의 경로 리스트
+    frame_paths = animator.generate_video_from_images(
+        project_name=project_name,
+        start_image_bytes=start_bytes,
+        end_image_bytes=end_bytes,
+        prompt=prompt
+    )
+    
+    if not frame_paths:
+        return {"status": "error", "message": "비디오 생성 실패"}
+        
+    # 3. 결과 반환
+    # 실제 서비스에서는 이미지 URL을 반환해야 하지만, 여기서는 로컬 파일 경로 반환
+    return {
+        "status": "success",
+        "message": "비디오 생성 완료",
+        "data": {
+            "project_name": project_name,
+            "frame_count": len(frame_paths),
+            "frames": frame_paths
+        }
+    }
+
+from pydantic import BaseModel
+
+class RevisionRequest(BaseModel):
+    project_name: str
+    start_image_path: str
+    end_image_path: str
+    target_frame_count: int
+    prompt: str
+
+@app.post("/regenerate-segment")
+async def regenerate_segment_endpoint(request: RevisionRequest):
+    """
+    특정 구간 재생성 (Revision) 엔드포인트
+    """
+    new_frames = animator.regenerate_video_segment(
+        project_name=request.project_name,
+        start_image_path=request.start_image_path,
+        end_image_path=request.end_image_path,
+        target_frame_count=request.target_frame_count,
+        original_prompt=request.prompt
+    )
+    
+    if new_frames is None:
+        return {"status": "error", "message": "구간 재생성 실패"}
+        
+    return {
+        "status": "success",
+        "message": "구간 재생성 완료",
+        "data": {
+            "frames": new_frames
+        }
+    }
+

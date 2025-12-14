@@ -183,10 +183,10 @@ def main():
             # 재생성 요청
             print("구간 재생성 중... (5초 생성 후 샘플링)")
             
-            from app.frame_generator import frame_generator
+            # from app.frame_generator import frame_generator
             
-            new_frames = frame_generator.regenerate_video_segment(
-                animator_client=animator,
+            new_frames = animator.regenerate_video_segment(
+                # animator_client=animator, # No longer needed
                 project_name=project_name,
                 start_image_path=frame_paths[start_idx],
                 end_image_path=frame_paths[end_idx],
