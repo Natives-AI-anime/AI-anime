@@ -182,7 +182,11 @@ def main():
             
             # 재생성 요청
             print("구간 재생성 중... (5초 생성 후 샘플링)")
-            new_frames = animator.regenerate_video_segment(
+            
+            from app.frame_generator import frame_generator
+            
+            new_frames = frame_generator.regenerate_video_segment(
+                animator_client=animator,
                 project_name=project_name,
                 start_image_path=frame_paths[start_idx],
                 end_image_path=frame_paths[end_idx],
@@ -210,21 +214,38 @@ def main():
         # 최종 결과 복사 (Revision 반영된 최종본)
         if output_dir:
             try:
-                # 생성된 프레임들을 사용자가 지정한 위치로 복사
+                # 생성된 프레임들을 사용자가 지정한 위치로 이동 (프로젝트 폴더 생성)
                 import shutil
                 
-                print(f"\n최종 결과물을 지정된 위치로 복사 중...")
+                # 1. 대상 디렉토리 생성 (선택한 폴더 / 프로젝트 이름)
+                target_dir = os.path.join(output_dir, project_name)
+                os.makedirs(target_dir, exist_ok=True)
                 
+                print(f"\n최종 결과물을 지정된 위치로 이동 중: {target_dir}")
+                
+                # 2. 파일 복사
                 for i, src_path in enumerate(frame_paths):
                     filename = os.path.basename(src_path)
-                    dst_path = os.path.join(output_dir, filename)
+                    dst_path = os.path.join(target_dir, filename)
                     shutil.copy2(src_path, dst_path)
-                    print(f"  복사됨: {dst_path}")
+                    print(f"  저장됨: {dst_path}")
                 
-                msg = f"모든 작업이 완료되었습니다!\n\n프로젝트: {project_name}\n추가 저장 위치: {output_dir}\n총 {len(frame_paths)}장"
+                # 3. 원본 generated_frames 내의 프로젝트 폴더 삭제
+                # frame_paths가 비어있지 않다고 가정 (위에서 체크함)
+                if frame_paths:
+                    # 첫 번째 프레임의 경로를 기반으로 소스 디렉토리 추론
+                    src_dir_path = os.path.dirname(frame_paths[0])
+                    
+                    # 안전을 위해 경로에 generated_frames와 프로젝트 이름이 포함되어 있는지 확인
+                    if "generated_frames" in src_dir_path and project_name in src_dir_path:
+                        print(f"  임시 파일 정리 중: {src_dir_path}")
+                        shutil.rmtree(src_dir_path)
+                        print("  ✓ 임시 폴더 삭제 완료")
+                
+                msg = f"모든 작업이 완료되었습니다!\n\n프로젝트: {project_name}\n저장 위치: {target_dir}\n총 {len(frame_paths)}장"
             except Exception as e:
-                print(f"❌ 파일 복사 실패: {e}")
-                msg = f"작업은 완료되었으나 복사에 실패했습니다.\n\n프로젝트: {project_name}\n오류: {e}"
+                print(f"❌ 파일 저장 또는 정리 실패: {e}")
+                msg = f"작업은 완료되었으나 저장/정리에 실패했습니다.\n\n프로젝트: {project_name}\n오류: {e}"
         else:
             msg = f"작업이 완료되었습니다!\n\n프로젝트: {project_name}\n저장 위치: generated_frames/{project_name}\n총 {len(frame_paths)}장"
 
