@@ -316,6 +316,32 @@ class Animator:
         # TODO: 실제 이미지 처리 로직 구현
         return image_data
 
+    def _get_slow_motion_keyword(self, target_frame_count: int, duration: int = 5) -> str:
+        """
+        목표 프레임 수와 영상 길이를 기반으로 '얼마나 느리게' 해야 하는지 계산하고,
+        그에 맞는 프롬프트 키워드를 반환하는 함수
+        """
+        # Kling은 보통 5초 영상에 30fps = 150프레임 정도를 만듦 (가정)
+        estimated_kling_frames = 30 * duration
+        
+        # 압축 비율 계산 (Ratio)
+        if target_frame_count <= 0: return ""
+        
+        slow_ratio = estimated_kling_frames / target_frame_count
+        print(f"📉 계산된 슬로우 모션 비율: 약 {slow_ratio:.1f}배 (Target: {target_frame_count})")
+
+        # 숫자 -> 형용사 매핑 (Thresholding)
+        if slow_ratio > 8.0:
+            return "frozen time, suspended in air, almost static"
+        elif slow_ratio > 4.0:
+            return "extremely slow motion, bullet time"
+        elif slow_ratio > 2.0:
+            return "slow motion, fluid movement"
+        elif slow_ratio > 1.2:
+            return "slightly slow motion, cinematic pace"
+        else:
+            return "normal speed, real time"
+
     def regenerate_video_segment(
         self,
         project_name: str,
@@ -334,8 +360,10 @@ class Animator:
             with open(end_image_path, "rb") as f:
                 end_bytes = f.read()
                 
-            # 2. 프롬프트 수정 (Slow Motion 적용)
-            modified_prompt = f"{original_prompt}, extremely slow motion, high detail, smooth transition, detailed interpolation"
+            # 2. 프롬프트 수정 (Dynamic Slow Motion & Fluidity 적용)
+            speed_control = self._get_slow_motion_keyword(target_frame_count)
+            fluidity = "fluid motion, liquid motion, smooth morphing"
+            modified_prompt = f"{original_prompt}, {speed_control}, {fluidity}, high quality, high detail, smooth transition"
             print(f"재생성 프롬프트: {modified_prompt}")
             
             # 3. 비디오 생성 (전체 프레임 추출)
@@ -372,7 +400,6 @@ class Animator:
                 indices = [int(i * (total_frames - 1) / (target_frame_count - 1)) for i in range(target_frame_count)]
                 for idx in indices:
                     sampled_frames.append(all_frames[idx])
-            
             
             print(f"샘플링 완료: {len(sampled_frames)}장")
             return sampled_frames
