@@ -228,7 +228,7 @@ class Animator:
 
                 if task_status == "succeed" or task_status == "completed": 
                     print("\n비디오 생성 완료!")
-                   
+                    
                     # 비디오 URL 가져오기
                     data = status_result.get("data", {})
                     
@@ -373,6 +373,7 @@ class Animator:
                 for idx in indices:
                     sampled_frames.append(all_frames[idx])
             
+            
             print(f"샘플링 완료: {len(sampled_frames)}장")
             return sampled_frames
             
@@ -382,6 +383,80 @@ class Animator:
             traceback.print_exc()
             return None
 
+    def create_video_from_frames(self, frame_paths: List[str], output_path: str, fps: int = 15) -> Optional[str]:
+        """
+        프레임 이미지 리스트를 하나의 비디오 파일로 병합 (OpenCV 사용)
+        """
+        if not frame_paths:
+            print("병합할 프레임이 없습니다.")
+            return None
+
+        try:
+            # 첫 번째 프레임으로 크기 확인
+            first_frame = cv2.imread(frame_paths[0])
+            if first_frame is None:
+                print(f"프레임을 읽을 수 없습니다: {frame_paths[0]}")
+                return None
+                
+            height, width, layers = first_frame.shape
+            size = (width, height)
+            
+            # 비디오 작성자 초기화 (mp4v 코덱 사용)
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(output_path, fourcc, fps, size)
+            
+            print(f"비디오 생성 시작: {output_path} ({len(frame_paths)} frames, {fps} fps)")
+            
+            for path in frame_paths:
+                # 경로 보정 (웹 URL 경로가 들어올 경우 대비 절대 경로로 변환하거나 체크)
+                # 여기서는 절대 경로 또는 실행 위치 기준 상대 경로가 들어온다고 가정
+                if not os.path.exists(path):
+                    # 혹시 URL 경로 일부만 왔을 경우에 대한 방어 로직 (project/frame.jpg -> full path)
+                    # 하지만 호출하는 쪽에서 정확한 경로를 주는 것이 원칙
+                    print(f"파일을 찾을 수 없음 (스킵): {path}")
+                    continue
+                
+                img = cv2.imread(path)
+                if img is not None:
+                    out.write(img)
+                else:
+                    print(f"이미지 읽기 실패: {path}")
+            
+            out.release()
+            print("비디오 생성 완료")
+            return output_path
+            
+        except Exception as e:
+            print(f"비디오 생성 중 오류 발생: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def create_zip_from_frames(self, frame_paths: List[str], output_path: str) -> Optional[str]:
+        """
+        프레임 이미지 리스트를 하나의 ZIP 파일로 압축
+        """
+        import zipfile
+        
+        if not frame_paths:
+            return None
+            
+        try:
+            print(f"ZIP 생성 시작: {output_path}")
+            with zipfile.ZipFile(output_path, 'w') as zipf:
+                for file_path in frame_paths:
+                    if os.path.exists(file_path):
+                        # ZIP 파일 내에 저장될 이름 (파일명만)
+                        arcname = os.path.basename(file_path)
+                        zipf.write(file_path, arcname)
+                    else:
+                        print(f"파일 누락 (스킵): {file_path}")
+            
+            print("ZIP 생성 완료")
+            return output_path
+        except Exception as e:
+            print(f"ZIP 생성 중 오류 발생: {e}")
+            return None
 
 # 싱글톤 인스턴스
 animator = Animator()

@@ -1,0 +1,5 @@
+{
+  "name": "AI Anime Studio Client",
+  "description": "Dedicated client for AI Anime Generator service with frame interpolation and revision tools.",
+  "requestFramePermissions": []
+}
