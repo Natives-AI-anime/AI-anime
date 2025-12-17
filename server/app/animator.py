@@ -83,12 +83,7 @@ class Animator:
         print(f"총 {len(saved_files)}개의 프레임이 저장되었습니다.")
         
         # 3. 임시 파일 정리
-        if temp_file_path and os.path.exists(temp_file_path):
-            try:
-                os.remove(temp_file_path)
-                print("🧹 임시 비디오 파일 삭제 완료")
-            except Exception as e:
-                print(f"⚠️ 임시 파일 삭제 실패 (무시됨): {e}")
+        return saved_files
         
         return saved_files
 
@@ -131,7 +126,7 @@ class Animator:
         end_image_bytes: bytes,
         prompt: str,
         duration: int = 5
-    ) -> Optional[List[str]]:
+    ) -> Optional[tuple[List[str], str]]:
         """
         두 이미지를 시작과 끝 프레임으로 사용하여 비디오 생성
         
@@ -142,7 +137,7 @@ class Animator:
             duration: 비디오 길이 (초, 5 또는 10)
             
         Returns:
-            생성된 프레임 파일 경로 리스트 또는 None
+            (프레임 경로 리스트, 비디오 파일 경로) 튜플 또는 None
         """
         try:
             print("Kling AI API 호출 중...")
@@ -224,7 +219,7 @@ class Animator:
                 task_status = status_result.get("data", {}).get("task_status")
                 
                 # 디버깅: 상태 출력 (매번 출력하여 확인)
-                print(f" [Status: {task_status}] ", end="", flush=True)
+                print(f" [Status: {task_status}]\n")
 
                 if task_status == "succeed" or task_status == "completed": 
                     print("\n비디오 생성 완료!")
@@ -264,10 +259,16 @@ class Animator:
                         print(f"DEBUG Response: {status_result}")
                         return None
                     
-                    # 1. 비디오 파일 다운로드 (스트리밍 안정성 확보)
+                        # 1. 비디오 파일 다운로드 (스트리밍 안정성 확보)
                     print(f"비디오 다운로드 중... ({video_url})")
                     try:
-                        temp_video_path = f"temp_{task_id}.mp4"
+                        # output_dir 준비 (frames 저장될 곳)
+                        output_dir = os.path.join("generated_frames", project_name, task_id)
+                        os.makedirs(output_dir, exist_ok=True)
+                        
+                        # 비디오 파일도 output_dir 안에 저장
+                        temp_video_path = os.path.join(output_dir, f"original_{task_id}.mp4")
+                        
                         video_response = requests.get(video_url, stream=True, timeout=60)
                         video_response.raise_for_status()
                         
@@ -279,14 +280,10 @@ class Animator:
                         
                         # 2. 로컬 파일에서 프레임 추출
                         print("프레임 추출 중...")
-                        output_dir = os.path.join("generated_frames", project_name, task_id)
                         frames = self.extract_frames_from_url(temp_video_path, output_dir)
                         
-                        # 3. 임시 파일 삭제
-                        if os.path.exists(temp_video_path):
-                            os.remove(temp_video_path)
-                            
-                        return frames
+                        # Return frames AND video path
+                        return frames, temp_video_path
                         
                     except Exception as e:  
                         print(f"비디오 다운로드 및 추출 실패: {e}")
@@ -370,7 +367,7 @@ class Animator:
             revision_project_name = f"{project_name}_revision"
             
             # self.generate_video_from_images 호출
-            all_frames = self.generate_video_from_images(
+            result = self.generate_video_from_images(
                 project_name=revision_project_name,
                 start_image_bytes=start_bytes,
                 end_image_bytes=end_bytes,
@@ -378,9 +375,11 @@ class Animator:
                 duration=5 
             )
             
-            if not all_frames:
+            if not result:
                 print("재생성 실패: 프레임을 생성하지 못했습니다.")
                 return None
+
+            all_frames, _ = result
                 
             total_frames = len(all_frames)
             print(f"생성된 총 프레임 수: {total_frames} -> 목표 프레임 수: {target_frame_count}")
@@ -428,9 +427,19 @@ class Animator:
             height, width, layers = first_frame.shape
             size = (width, height)
             
-            # 비디오 작성자 초기화 (mp4v 코덱 사용)
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter(output_path, fourcc, fps, size)
+            # 비디오 작성자 초기화 (브라우저 호환성을 위해 avc1 코덱 사용 시도)
+            # 만약 avc1이 실패하면 mp4v로 폴백
+            try:
+                fourcc = cv2.VideoWriter_fourcc(*'avc1')
+                out = cv2.VideoWriter(output_path, fourcc, fps, size)
+                if not out.isOpened():
+                    print("avc1 코덱 초기화 실패, mp4v로 재시도합니다.")
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    out = cv2.VideoWriter(output_path, fourcc, fps, size)
+            except Exception:
+                print("코덱 설정 중 오류, mp4v로 기본 설정합니다.")
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                out = cv2.VideoWriter(output_path, fourcc, fps, size)
             
             print(f"비디오 생성 시작: {output_path} ({len(frame_paths)} frames, {fps} fps)")
             

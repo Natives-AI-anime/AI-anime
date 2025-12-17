@@ -6,6 +6,8 @@
 
 import sys
 import os
+import base64
+import shutil
 
 # 현재 파일(main.py)의 부모의 부모 폴더(AI-anime)를 파이썬 경로에 추가합니다.
 # 이렇게 해야 'config' 폴더를 찾을 수 있습니다.
@@ -16,6 +18,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from config.settings import settings  # 우리가 만든 설정 파일(config/settings.py)을 가져옵니다.
 from app.animator import animator
+from app.animator import animator
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from typing import List
 
 # 1. FastAPI 앱(서버) 만들기
 # title과 version은 설정 파일에서 가져온 값을 씁니다.
@@ -34,8 +40,6 @@ app.add_middleware(
 )
 
 # 2. 기본 접속 주소 ("/") 만들기
-# 사용자가 인터넷 주소창에 우리 서버 주소(예: http://localhost:8000/)만 치고 들어왔을 때
-# 실행될 함수입니다.
 @app.get("/")
 def read_root():
     """
@@ -56,192 +60,210 @@ async def generate_video_endpoint(
     project_name: str = Form(...)
 ):
     """
-    비디오 생성 엔드포인트
-    
-    Args:
-        start_image: 시작 프레임 이미지
-        end_image: 끝 프레임 이미지
-        prompt: 비디오 생성 프롬프트
-        project_name: 프로젝트 이름
+    비디오 생성 및 Base64 반환 (파일 즉시 삭제)
     """
-    import shutil
     
     # 1. 이미지 읽기
     start_bytes = await start_image.read()
     end_bytes = await end_image.read()
     
-    # 2. Animator 호출
-    # 결과는 생성된 프레임 파일들의 경로 리스트
-    frame_paths = animator.generate_video_from_images(
+    # 2. Animator 호출 (프레임 생성)
+    # 이제 (frames, video_path) 튜플을 반환함
+    result = animator.generate_video_from_images(
         project_name=project_name,
         start_image_bytes=start_bytes,
         end_image_bytes=end_bytes,
         prompt=prompt
     )
     
-    if not frame_paths:
+    if not result:
         return {"status": "error", "message": "비디오 생성 실패"}
         
-    # 3. 결과 반환
-    # 절대 경로를 웹 URL로 변환
-    # 예: C:\work\AI-anime\server\generated_frames\...\frame.jpg -> http://localhost:8000/generated_frames/...\frame.jpg
-    frame_urls = []
-    for path in frame_paths:
-        # generated_frames 이후의 경로만 추출
-        if "generated_frames" in path:
-            rel_path = path.split("generated_frames")[-1].replace("\\", "/").lstrip("/")
-            frame_urls.append(f"http://localhost:8000/generated_frames/{rel_path}")
-        else:
-            frame_urls.append(path)
+    frame_paths, video_path = result
+
+    video_data_b64 = None
+    frames_b64 = []
+    
+    try:
+        # 3. 파일들을 Base64로 읽기
+        
+        # 3-1. 프레임 이미지 읽기
+        for path in frame_paths:
+            with open(path, "rb") as img_file:
+                b64_str = base64.b64encode(img_file.read()).decode('utf-8')
+                ext = os.path.splitext(path)[1].lower().replace('.', '')
+                if ext == 'jpg': ext = 'jpeg'
+                frames_b64.append(f"data:image/{ext};base64,{b64_str}")
+        
+        # 3-2. 비디오 파일 읽기 (Original from API)
+        if video_path and os.path.exists(video_path):
+            with open(video_path, "rb") as vid_file:
+                b64_vid = base64.b64encode(vid_file.read()).decode('utf-8')
+                video_data_b64 = f"data:video/mp4;base64,{b64_vid}"
+
+        # 4. 파일 및 폴더 삭제 (Cleanup)
+        # generated_frames/project_name 폴더 삭제
+        # video_path는 frame_paths[0]와 같은 디렉토리(output_dir)에 있음
+        first_frame_dir = os.path.dirname(frame_paths[0])
+        if os.path.exists(first_frame_dir):
+            shutil.rmtree(first_frame_dir)
+            print(f"서버 정리 완료: {first_frame_dir} 삭제됨")
+            
+    except Exception as e:
+        print(f"Error processing files: {e}")
+        return {"status": "error", "message": f"파일 처리 중 오류: {str(e)}"}
 
     return {
         "status": "success",
-        "message": "비디오 생성 완료",
+        "message": "비디오 생성 및 변환 완료",
         "data": {
             "project_name": project_name,
-            "frame_count": len(frame_paths),
-            "frames": frame_urls
+            "frame_count": len(frames_b64),
+            "frames": frames_b64,     # Base64 Strings
+            "video_data": video_data_b64 # Base64 String (Original API Video)
         }
     }
 
-from fastapi.staticfiles import StaticFiles
-# generated_frames 폴더를 /generated_frames 주소로 연결 (정적 파일 서빙)
-# 이미지 데이터를 직접 전송하지 않는 FAST API의 특징이라고 함
-# 주의: 이 코드는 app 선언 이후에 위치해야 함
-app.mount("/generated_frames", StaticFiles(directory="generated_frames"), name="generated_frames")
+# 정적 파일 서빙 설정 (혹시 모를 상황 대비해 남겨둠, 하지만 이제 쓰이지 않음)
+frames_dir = "generated_frames"
+os.makedirs(frames_dir, exist_ok=True)
+app.mount("/generated_frames", StaticFiles(directory=frames_dir), name="generated_frames")
 
-from pydantic import BaseModel
 
-class RevisionRequest(BaseModel):
+# --- Revision & Export Endpoints ---
+
+class RegenerateRequest(BaseModel):
     project_name: str
-    start_image_path: str
-    end_image_path: str
-    target_frame_count: int
+    start_image: str  # Base64
+    end_image: str    # Base64
     prompt: str
+    target_frame_count: int
 
-@app.post("/regenerate-segment")
-async def regenerate_segment_endpoint(request: RevisionRequest):
+@app.post("/regenerate")
+async def regenerate_endpoint(req: RegenerateRequest):
     """
-    특정 구간 재생성 (Revision) 엔드포인트
+    특정 구간 재생성 엔드포인트
+    Base64 이미지를 받아 임시 파일로 저장 후 Animator 호출, 결과 프레임을 Base64로 반환.
     """
-    new_frames = animator.regenerate_video_segment(
-        project_name=request.project_name,
-        start_image_path=request.start_image_path,
-        end_image_path=request.end_image_path,
-        target_frame_count=request.target_frame_count,
-        original_prompt=request.prompt
-    )
-    
-    if new_frames is None:
-        return {"status": "error", "message": "구간 재생성 실패"}
-
-    # 절대 경로를 웹 URL로 변환
-    frame_urls = []
-    for path in new_frames:
-        if "generated_frames" in path:
-            rel_path = path.split("generated_frames")[-1].replace("\\", "/").lstrip("/")
-            frame_urls.append(f"http://localhost:8000/generated_frames/{rel_path}")
-        else:
-            frame_urls.append(path)
+    try:
+        # 1. Base64 디코딩 및 임시 파일 저장
+        temp_dir = f"temp_{req.project_name}_regen"
+        os.makedirs(temp_dir, exist_ok=True)
         
-    return {
-        "status": "success",
-        "message": "구간 재생성 완료",
-        "data": {
-            "frames": frame_urls
-        }
-    }
+        start_path = os.path.join(temp_dir, "start.jpg")
+        end_path = os.path.join(temp_dir, "end.jpg")
+        
+        with open(start_path, "wb") as f:
+            f.write(base64.b64decode(req.start_image.split(",")[1]))
+        with open(end_path, "wb") as f:
+            f.write(base64.b64decode(req.end_image.split(",")[1]))
+            
+        # 2. Animator 호출
+        new_frames = animator.regenerate_video_segment(
+            project_name=req.project_name,
+            start_image_path=start_path,
+            end_image_path=end_path,
+            target_frame_count=req.target_frame_count,
+            original_prompt=req.prompt
+        )
+        
+        if not new_frames:
+            shutil.rmtree(temp_dir)
+            return {"status": "error", "message": "재생성 실패"}
+            
+        # 3. 결과 Base64 변환
+        frames_b64 = []
+        for path in new_frames:
+            with open(path, "rb") as img_file:
+                b64_str = base64.b64encode(img_file.read()).decode('utf-8')
+                ext = os.path.splitext(path)[1].lower().replace('.', '')
+                if ext == 'jpg': ext = 'jpeg'
+                frames_b64.append(f"data:image/{ext};base64,{b64_str}")
+        
+        # 4. Cleanup
+        # temp_dir (inputs) and generated frame dir (outputs scope)
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        
+        # new_frames의 부모 디렉토리도 삭제 (generated_frames/...)
+        if new_frames:
+            first_frame_dir = os.path.dirname(new_frames[0])
+            if os.path.exists(first_frame_dir) and "generated_frames" in first_frame_dir:
+                shutil.rmtree(first_frame_dir)
 
-class ExportRequest(BaseModel):
+        return {
+            "status": "success",
+            "data": {
+                "frames": frames_b64
+            }
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+class RenderRequest(BaseModel):
     project_name: str
-    frame_paths: list[str] # 상대 경로 리스트 (generated_frames/...)
-    fps: int = 15
+    frames: List[str] # Base64 list
+    fps: int = 10
 
-@app.post("/export-video")
-async def export_video_endpoint(request: ExportRequest):
+@app.post("/render-video")
+async def render_video_endpoint(req: RenderRequest):
     """
-    현재 프레임 리스트를 비디오로 병합하여 다운로드 URL 반환
+    클라이언트가 보낸 프레임(Base64)들을 모아 MP4 비디오로 렌더링 후 Base64 반환.
     """
-    # 1. 경로 절대 경로로 변환
-    # 클라이언트에서는 "generated_frames/project/frame.jpg" 형태의 상대 경로를 보냄
-    # 서버에서는 이를 절대 경로로 변환해야 함
-    
-    abs_frame_paths = []
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # server
-    
-    for rel_path in request.frame_paths:
-        # 혹시 모를 경로 조작 방지
-        safe_rel_path = rel_path.replace("..", "").lstrip("/\\")
-        full_path = os.path.join(base_dir, safe_rel_path)
-        abs_frame_paths.append(full_path)
+    try:
+        # 1. 임시 디렉토리 생성
+        temp_dir = f"temp_{req.project_name}_render"
+        os.makedirs(temp_dir, exist_ok=True)
         
-    # 2. 출력 파일 경로 설정
-    output_filename = f"{request.project_name}_final_{len(abs_frame_paths)}.mp4"
-    # generated_frames 폴더 내 프로젝트 폴더에 저장
-    output_dir = os.path.join("generated_frames", request.project_name)
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, output_filename)
-    
-    # 3. 비디오 생성
-    result_path = animator.create_video_from_frames(
-        frame_paths=abs_frame_paths,
-        output_path=output_path,
-        fps=request.fps
-    )
-    
-    if not result_path:
-        return {"status": "error", "message": "비디오 생성 실패"}
+        frame_paths = []
+        for i, frame_b64 in enumerate(req.frames):
+            file_path = os.path.join(temp_dir, f"frame_{i:05d}.jpg")
+            # header 제거 (data:image/jpeg;base64,...)
+            if "," in frame_b64:
+                b64_data = frame_b64.split(",")[1]
+            else:
+                b64_data = frame_b64
+            
+            with open(file_path, "wb") as f:
+                f.write(base64.b64decode(b64_data))
+            frame_paths.append(file_path)
+            
+        # 2. 비디오 생성 (OpenCV via Animator)
+        output_filename = f"{req.project_name}_final.mp4"
+        output_path = os.path.join(temp_dir, output_filename)
         
-    # 4. URL 변환
-    # generated_frames/... -> http://...
-    rel_url_path = os.path.relpath(result_path, start="generated_frames").replace("\\", "/")
-    video_url = f"http://localhost:8000/generated_frames/{rel_url_path}"
-    
-    return {
-        "status": "success",
-        "message": "비디오 내보내기 완료",
-        "data": {
-            "video_url": video_url
+        result_video_path = animator.create_video_from_frames(
+            frame_paths=frame_paths,
+            output_path=output_path,
+            fps=req.fps
+        )
+        
+        # 3. 비디오 Base64 변환
+        video_b64 = None
+        if result_video_path and os.path.exists(result_video_path):
+            with open(result_video_path, "rb") as f:
+                video_b64 = "data:video/mp4;base64," + base64.b64encode(f.read()).decode('utf-8')
+        
+        # 4. Cleanup
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+            
+        if not video_b64:
+             return {"status": "error", "message": "비디오 렌더링 실패"}
+             
+        return {
+            "status": "success",
+            "data": {
+                "video_data": video_b64
+            }
         }
-    }
 
-@app.post("/export-frames")
-async def export_frames_endpoint(request: ExportRequest):
-    """
-    현재 프레임 리스트를 ZIP으로 압축하여 다운로드 URL 반환
-    """
-    abs_frame_paths = []
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # server
-    
-    for rel_path in request.frame_paths:
-        safe_rel_path = rel_path.replace("..", "").lstrip("/\\")
-        full_path = os.path.join(base_dir, safe_rel_path)
-        abs_frame_paths.append(full_path)
-        
-    output_filename = f"{request.project_name}_frames.zip"
-    output_dir = os.path.join("generated_frames", request.project_name)
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, output_filename)
-    
-    result_path = animator.create_zip_from_frames(
-        frame_paths=abs_frame_paths,
-        output_path=output_path
-    )
-    
-    if not result_path:
-        return {"status": "error", "message": "ZIP 생성 실패"}
-        
-    rel_url_path = os.path.relpath(result_path, start="generated_frames").replace("\\", "/")
-    zip_url = f"http://localhost:8000/generated_frames/{rel_url_path}"
-    
-    return {
-        "status": "success",
-        "message": "프레임 압축 완료",
-        "data": {
-            "zip_url": zip_url
-        }
-    }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":
-    # 파이썬 명령어로 직접 실행할 때 (python main.py)
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
