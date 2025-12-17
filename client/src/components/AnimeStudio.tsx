@@ -955,47 +955,64 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({
 
           {/* Steps List */}
           <div className="space-y-2 flex-1">
-            {steps.map((step, idx) => (
-              <button
-                key={idx}
-                onClick={() => {
-                  // Temporarily allow free navigation
-                  onStepChange(idx as any);
-                }}
-                className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl transition-all duration-200 group relative ${
-                  activeStep === idx
-                    ? "bg-purple-600/10 text-white"
-                    : "text-slate-500 hover:bg-slate-800/50 hover:text-slate-300"
-                }`}
-              >
-                {/* Active Indicator Bar */}
-                {activeStep === idx && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-purple-500 rounded-r-full"></div>
-                )}
+            {steps.map((step, idx) => {
+              const isEnabled =
+                idx === 0
+                  ? true
+                  : idx === 1
+                  ? !!result?.data?.frames
+                  : idx === 2
+                  ? !!videoUrl && !!result?.data?.frames
+                  : false;
 
-                <div
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg transition-colors ${
+              return (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    if (isEnabled) {
+                      onStepChange(idx as any);
+                    }
+                  }}
+                  disabled={!isEnabled}
+                  className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl transition-all duration-200 group relative ${
                     activeStep === idx
-                      ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30"
-                      : "bg-slate-800"
+                      ? "bg-purple-600/10 text-white"
+                      : isEnabled
+                      ? "text-slate-500 hover:bg-slate-800/50 hover:text-slate-300 cursor-pointer"
+                      : "text-slate-700 opacity-50 cursor-not-allowed"
                   }`}
                 >
-                  <i className={`fas ${step.icon}`}></i>
-                </div>
-                <div className="hidden lg:block text-left">
+                  {/* Active Indicator Bar */}
+                  {activeStep === idx && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-purple-500 rounded-r-full"></div>
+                  )}
+
                   <div
-                    className={`font-bold text-sm ${
-                      activeStep === idx ? "text-purple-400" : ""
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg transition-colors ${
+                      activeStep === idx
+                        ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30"
+                        : isEnabled
+                        ? "bg-slate-800"
+                        : "bg-slate-900 border border-slate-800"
                     }`}
                   >
-                    {step.title}
+                    <i className={`fas ${step.icon}`}></i>
                   </div>
-                  <div className="text-[10px] opacity-70 font-normal">
-                    {step.desc}
+                  <div className="hidden lg:block text-left">
+                    <div
+                      className={`font-bold text-sm ${
+                        activeStep === idx ? "text-purple-400" : ""
+                      }`}
+                    >
+                      {step.title}
+                    </div>
+                    <div className="text-[10px] opacity-70 font-normal">
+                      {step.desc}
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
 
           {/* Status Box */}
