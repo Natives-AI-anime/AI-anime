@@ -9,11 +9,16 @@ const base64ToBlob = async (base64: string) => {
 
 interface AnimeStudioProps {
   baseUrl: string;
+  activeStep: 0 | 1 | 2;
+  onStepChange: (step: 0 | 1 | 2) => void;
 }
 
-const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
-  // Navigation State
-  const [activeStep, setActiveStep] = useState<0 | 1 | 2>(0);
+const AnimeStudio: React.FC<AnimeStudioProps> = ({
+  baseUrl,
+  activeStep,
+  onStepChange,
+}) => {
+  // Navigation State (Lifted to parent)
 
   // Form State
   const [projectName, setProjectName] = useState("");
@@ -43,6 +48,7 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [revisionPrompt, setRevisionPrompt] = useState("");
 
   // Playback Loop
   useEffect(() => {
@@ -86,7 +92,7 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
   const togglePlay = () => setIsPlaying(!isPlaying);
 
   const steps = [
-    { title: "Creation", icon: "fa-pencil-alt", desc: "Setup Parameters" },
+    { title: "Creation", icon: "fa-pencil-alt", desc: "Setup Generation" },
     { title: "Review", icon: "fa-eye", desc: "Check & Modify" },
     { title: "Export", icon: "fa-download", desc: "Save Results" },
   ];
@@ -164,7 +170,7 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
         setVideoUrl(null);
       }
 
-      setActiveStep(1); // Move to review step
+      onStepChange(1); // Move to review step
     } catch (err: any) {
       setError(err.message || "Failed to connect to the server.");
     } finally {
@@ -198,7 +204,7 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
       },
     });
     setCurrentFrameIndex(0);
-    setActiveStep(1);
+    onStepChange(1);
     setIsPlaying(true);
   };
 
@@ -382,6 +388,7 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
           start_image: result.data.frames[startIdx],
           end_image: result.data.frames[endIdx],
           prompt: prompt,
+          revision_prompt: revisionPrompt, // Pass specific revision prompt
           target_frame_count: endIdx - startIdx, // approx
         }),
       });
@@ -453,16 +460,33 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => setActiveStep(0)}
+            onClick={() => onStepChange(0)}
             className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-sm font-semibold hover:bg-slate-700 transition-colors"
           >
             <i className="fas fa-arrow-left mr-2"></i> Edit Parameters
           </button>
           <button
-            onClick={() => setActiveStep(2)}
-            className="px-6 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-bold hover:shadow-lg hover:shadow-purple-900/40 transition-all flex items-center"
+            onClick={async () => {
+              // Trigger render first, then navigate
+              const success = await handleRenderVideo();
+              if (success) {
+                onStepChange(2);
+              }
+            }}
+            disabled={isRendering}
+            className={`px-6 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-bold hover:shadow-lg hover:shadow-purple-900/40 transition-all flex items-center gap-2 ${
+              isRendering ? "opacity-50 cursor-not-allowed" : ""
+            }`}
           >
-            Accept & Export <i className="fas fa-arrow-right ml-2"></i>
+            {isRendering ? (
+              <>
+                <i className="fas fa-circle-notch fa-spin"></i> Rendering...
+              </>
+            ) : (
+              <>
+                Accept & Export <i className="fas fa-arrow-right ml-2"></i>
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -557,32 +581,44 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
 
             {/* Regeneration Panel */}
             {selectionStart !== null && selectionEnd !== null && (
-              <div className="absolute bottom-24 bg-slate-800/90 backdrop-blur border border-purple-500/30 p-4 rounded-xl flex items-center gap-4 animate-fadeIn">
-                <div className="text-xs text-slate-300">
-                  <span className="font-bold text-white">Modify Range:</span>{" "}
-                  {Math.min(selectionStart, selectionEnd) + 1} -{" "}
-                  {Math.max(selectionStart, selectionEnd) + 1}
+              <div className="absolute bottom-24 bg-slate-800/90 backdrop-blur border border-purple-500/30 p-4 rounded-xl flex flex-col gap-3 animate-fadeIn min-w-[300px]">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-slate-300">
+                    <span className="font-bold text-white">Modify Range:</span>{" "}
+                    {Math.min(selectionStart, selectionEnd) + 1} -{" "}
+                    {Math.max(selectionStart, selectionEnd) + 1}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSelectionStart(null);
+                      setSelectionEnd(null);
+                      setRevisionPrompt("");
+                    }}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    <i className="fas fa-times"></i>
+                  </button>
                 </div>
+
+                <input
+                  type="text"
+                  value={revisionPrompt}
+                  onChange={(e) => setRevisionPrompt(e.target.value)}
+                  placeholder="Describe changes (optional)..."
+                  className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-purple-500 outline-none"
+                />
+
                 <button
                   onClick={handleRegenerate}
                   disabled={isRegenerating}
-                  className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-2"
+                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
                 >
                   {isRegenerating ? (
                     <i className="fas fa-circle-notch fa-spin"></i>
                   ) : (
                     <i className="fas fa-wand-magic-sparkles"></i>
                   )}
-                  Regenerate
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectionStart(null);
-                    setSelectionEnd(null);
-                  }}
-                  className="text-slate-400 hover:text-white"
-                >
-                  <i className="fas fa-times"></i>
+                  Regenerate Segment
                 </button>
               </div>
             )}
@@ -701,21 +737,25 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
 
   const handleExportVideo = async () => {
     if (videoUrl) {
-      saveAs(videoUrl, `${projectName || "anime_project"}.mp4`);
+      saveAs(videoUrl, `${projectName || "anime_project"}.webm`);
     } else if (result?.data?.video_data) {
       try {
         const blob = await base64ToBlob(result.data.video_data);
-        saveAs(blob, `${projectName || "anime_project"}.mp4`);
+        saveAs(blob, `${projectName || "anime_project"}.webm`);
       } catch (e) {
         console.error("Failed to export video", e);
       }
     }
   };
 
-  const handleRenderVideo = async () => {
-    if (!result?.data?.frames) return;
+  const handleRenderVideo = async (): Promise<boolean> => {
+    if (!result?.data?.frames) return false;
+
+    // If video is already rendered (videoUrl exists), skip re-rendering
+    if (videoUrl) return true;
 
     setIsRendering(true);
+    let success = false;
     try {
       const response = await fetch(`${baseUrl}/render-video`, {
         method: "POST",
@@ -727,13 +767,19 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
         }),
       });
 
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(
+          `Server returned ${response.status}: ${text.slice(0, 100)}`
+        );
+      }
+
       const data = await response.json();
       if (data.status === "success" && data.data.video_data) {
         const blob = await base64ToBlob(data.data.video_data);
         const url = URL.createObjectURL(blob);
         setVideoUrl(url);
 
-        // Update result to include this video_data so it persists (optional)
         setResult((prev: any) => ({
           ...prev,
           data: {
@@ -741,15 +787,17 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
             video_data: data.data.video_data,
           },
         }));
+        success = true;
       } else {
         alert("Rendering failed: " + data.message);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert("Error rendering video");
+      alert(`Error rendering video: ${e.message}`);
     } finally {
       setIsRendering(false);
     }
+    return success;
   };
 
   const renderStep2 = () => (
@@ -765,7 +813,7 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => setActiveStep(1)}
+            onClick={() => onStepChange(1)}
             className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-sm font-semibold hover:bg-slate-700 transition-colors"
           >
             <i className="fas fa-arrow-left mr-2"></i> Back to Review
@@ -838,7 +886,9 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <a
               href={videoUrl || "#"}
-              download={videoUrl ? "animation.mp4" : undefined}
+              download={
+                videoUrl ? `${projectName || "anime_project"}.webm` : undefined
+              }
               onClick={(e) => {
                 if (!videoUrl || isRendering) e.preventDefault();
               }}
@@ -855,7 +905,7 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
                 </span>
               ) : videoUrl ? (
                 <span>
-                  <i className="fas fa-download mr-2"></i> Download MP4 Video
+                  <i className="fas fa-download mr-2"></i> Download Video (WebM)
                 </span>
               ) : (
                 <span>
@@ -891,14 +941,6 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
     </div>
   );
 
-  // Auto-render when entering export step if needed
-  useEffect(() => {
-    // Check if we are in Export step, have frames, but no video and not currently rendering
-    if (activeStep === 2 && !videoUrl && result?.data?.frames && !isRendering) {
-      handleRenderVideo();
-    }
-  }, [activeStep, videoUrl, result, isRendering]);
-
   return (
     <div className="flex h-full text-slate-200 font-sans">
       {/* Left Navigation Sidebar */}
@@ -918,7 +960,7 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({ baseUrl }) => {
                 key={idx}
                 onClick={() => {
                   // Temporarily allow free navigation
-                  setActiveStep(idx as any);
+                  onStepChange(idx as any);
                 }}
                 className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl transition-all duration-200 group relative ${
                   activeStep === idx

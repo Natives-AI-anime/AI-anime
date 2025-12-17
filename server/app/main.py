@@ -137,6 +137,7 @@ class RegenerateRequest(BaseModel):
     start_image: str  # Base64
     end_image: str    # Base64
     prompt: str
+    revision_prompt: str = "" # Optional specific prompt for revision
     target_frame_count: int
 
 @app.post("/regenerate")
@@ -164,7 +165,8 @@ async def regenerate_endpoint(req: RegenerateRequest):
             start_image_path=start_path,
             end_image_path=end_path,
             target_frame_count=req.target_frame_count,
-            original_prompt=req.prompt
+            original_prompt=req.prompt,
+            revision_prompt=req.revision_prompt
         )
         
         if not new_frames:
@@ -231,7 +233,8 @@ async def render_video_endpoint(req: RenderRequest):
             frame_paths.append(file_path)
             
         # 2. 비디오 생성 (OpenCV via Animator)
-        output_filename = f"{req.project_name}_final.mp4"
+        # 브라우저 호환성을 위해 WebM(VP8) 형식 사용
+        output_filename = f"{req.project_name}_final.webm"
         output_path = os.path.join(temp_dir, output_filename)
         
         result_video_path = animator.create_video_from_frames(
@@ -244,7 +247,7 @@ async def render_video_endpoint(req: RenderRequest):
         video_b64 = None
         if result_video_path and os.path.exists(result_video_path):
             with open(result_video_path, "rb") as f:
-                video_b64 = "data:video/mp4;base64," + base64.b64encode(f.read()).decode('utf-8')
+                video_b64 = "data:video/webm;base64," + base64.b64encode(f.read()).decode('utf-8')
         
         # 4. Cleanup
         if os.path.exists(temp_dir):

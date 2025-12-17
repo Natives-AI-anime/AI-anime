@@ -345,7 +345,8 @@ class Animator:
         start_image_path: str,
         end_image_path: str,
         target_frame_count: int,
-        original_prompt: str = ""
+        original_prompt: str = "",
+        revision_prompt: str = ""
     ) -> Optional[List[str]]:
         """
         특정 구간의 영상을 재생성하고, 필요한 프레임 수만큼 샘플링하여 반환
@@ -358,10 +359,13 @@ class Animator:
                 end_bytes = f.read()
                 
             # 2. 프롬프트 수정 (Dynamic Slow Motion & Fluidity 적용)
+            # 사용자가 수정을 위해 입력한 별도 프롬프트가 있으면 그걸 우선 사용
+            base_prompt = revision_prompt if revision_prompt and revision_prompt.strip() else original_prompt
+            
             speed_control = self._get_slow_motion_keyword(target_frame_count)
             fluidity = "fluid motion, liquid motion, smooth morphing"
-            modified_prompt = f"{original_prompt}, {speed_control}, {fluidity}, high quality, high detail, smooth transition"
-            print(f"재생성 프롬프트: {modified_prompt}")
+            modified_prompt = f"{base_prompt}, {speed_control}, {fluidity}, high quality, high detail, smooth transition"
+            print(f"재생성 프롬프트: {modified_prompt} (Base: {base_prompt})")
             
             # 3. 비디오 생성 (전체 프레임 추출)
             revision_project_name = f"{project_name}_revision"
@@ -427,40 +431,75 @@ class Animator:
             height, width, layers = first_frame.shape
             size = (width, height)
             
-            # 비디오 작성자 초기화 (브라우저 호환성을 위해 avc1 코덱 사용 시도)
-            # 만약 avc1이 실패하면 mp4v로 폴백
-            try:
-                fourcc = cv2.VideoWriter_fourcc(*'avc1')
-                out = cv2.VideoWriter(output_path, fourcc, fps, size)
-                if not out.isOpened():
-                    print("avc1 코덱 초기화 실패, mp4v로 재시도합니다.")
-                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                    out = cv2.VideoWriter(output_path, fourcc, fps, size)
-            except Exception:
-                print("코덱 설정 중 오류, mp4v로 기본 설정합니다.")
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                out = cv2.VideoWriter(output_path, fourcc, fps, size)
+            # 파일 확장자에 따른 코덱 선택 및 폴백 전략
+            base, ext = os.path.splitext(output_path)
+            ext = ext.lower()
             
-            print(f"비디오 생성 시작: {output_path} ({len(frame_paths)} frames, {fps} fps)")
+            # 시도할 코덱/확장자 목록 (우선순위 순)
+            # 1. WebM (VP8) - 브라우저 호환성 최우선
+            # 2. WebM (VP9) - 차선책
+            # 3. MP4 (mp4v) - 최후의 수단 (브라우저 재생 불가 가능성 있음, 다운로드용)
             
-            for path in frame_paths:
-                # 경로 보정 (웹 URL 경로가 들어올 경우 대비 절대 경로로 변환하거나 체크)
-                # 여기서는 절대 경로 또는 실행 위치 기준 상대 경로가 들어온다고 가정
+            attempts = []
+            if ext == '.webm':
+                attempts.append(('VP80', output_path))
+                attempts.append(('VP90', output_path))
+                attempts.append(('mp4v', base + '.mp4')) # Fallback to MP4 container
+            else:
+                attempts.append(('mp4v', output_path))
+                attempts.append(('avc1', output_path)) # Try safe avc1 if mp4 requested
+            
+            active_out = None
+            final_path = output_path
+            
+            for FourCC_str, target_path in attempts:
+                fourcc = cv2.VideoWriter_fourcc(*FourCC_str)
+                temp_out = cv2.VideoWriter(target_path, fourcc, fps, size)
+                
+                if temp_out.isOpened():
+                    print(f"코덱 성공: {FourCC_str} -> {target_path}")
+                    active_out = temp_out
+                    final_path = target_path
+                    break
+                else:
+                    print(f"코덱 초기화 실패: {FourCC_str}")
+                    if os.path.exists(target_path):
+                        try: os.remove(target_path)
+                        except: pass
+            
+            if active_out is None:
+                print("모든 코덱 시도 실패")
+                return None
+                
+            active_out.write(first_frame) # Write first frame explicitly checked above? No, rewriting loop
+            
+            print(f"비디오 생성 시작: {final_path} ({len(frame_paths)} frames, {fps} fps)")
+            
+            # 첫 번째 프레임은 이미 shape 확인용으로 읽었지만 loop에서 다시 읽음 (효율성 off)
+            for i, path in enumerate(frame_paths):
+                # 0번 프레임은 위에서 읽었으나 여기서 다시 읽어서 쓴다.
+                if i == 0:
+                    active_out.write(first_frame)
+                    continue
+                    
                 if not os.path.exists(path):
-                    # 혹시 URL 경로 일부만 왔을 경우에 대한 방어 로직 (project/frame.jpg -> full path)
-                    # 하지만 호출하는 쪽에서 정확한 경로를 주는 것이 원칙
-                    print(f"파일을 찾을 수 없음 (스킵): {path}")
                     continue
                 
                 img = cv2.imread(path)
                 if img is not None:
-                    out.write(img)
+                    active_out.write(img)
                 else:
                     print(f"이미지 읽기 실패: {path}")
             
-            out.release()
-            print("비디오 생성 완료")
-            return output_path
+            active_out.release()
+            
+            # 파일 크기 확인 (0바이트면 실패로 간주)
+            if os.path.exists(final_path) and os.path.getsize(final_path) > 0:
+                print(f"비디오 생성 완료: {final_path} ({os.path.getsize(final_path)} bytes)")
+                return final_path
+            else:
+                print("비디오 파일이 생성되지 않았거나 비어있습니다.")
+                return None
             
         except Exception as e:
             print(f"비디오 생성 중 오류 발생: {e}")
