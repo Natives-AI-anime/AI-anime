@@ -9,8 +9,8 @@ import os
 import base64
 import shutil
 
-# 현재 파일(main.py)의 부모의 부모 폴더(AI-anime)를 파이썬 경로에 추가합니다.
-# 이렇게 해야 'config' 폴더를 찾을 수 있습니다.
+# 상위 경로를 시스템 경로에 추가
+# ! 타 폴더 모듈 참조 환경 구축
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, UploadFile, File, Form
@@ -30,10 +30,11 @@ app = FastAPI(
     version=settings.VERSION
 )
 
-# CORS 설정 (프론트엔드에서 접근 가능하도록 허용)
+# CORS 설정
+# ? 개발 시 전면 허용, 운영 시 제한 권장
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 모든 출처 허용 (개발용)
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -67,8 +68,8 @@ async def generate_video_endpoint(
     start_bytes = await start_image.read()
     end_bytes = await end_image.read()
     
-    # 2. Animator 호출 (프레임 생성)
-    # 이제 (frames, video_path) 튜플을 반환함
+    # Animator 호출 및 프레임 생성
+    # ! 생성 소요 시간 고려 필요
     result = animator.generate_video_from_images(
         project_name=project_name,
         start_image_bytes=start_bytes,
@@ -101,13 +102,12 @@ async def generate_video_endpoint(
                 b64_vid = base64.b64encode(vid_file.read()).decode('utf-8')
                 video_data_b64 = f"data:video/mp4;base64,{b64_vid}"
 
-        # 4. 파일 및 폴더 삭제 (Cleanup)
-        # generated_frames/project_name 폴더 삭제
-        # video_path는 frame_paths[0]와 같은 디렉토리(output_dir)에 있음
+        # 임시 파일 정리 및 용량 확보
+        # ! 특정 프로젝트 하위 폴더만 삭제
         first_frame_dir = os.path.dirname(frame_paths[0])
         if os.path.exists(first_frame_dir):
             shutil.rmtree(first_frame_dir)
-            print(f"서버 정리 완료: {first_frame_dir} 삭제됨")
+            print(f"서버 정리 완료: {first_frame_dir}")
             
     except Exception as e:
         print(f"Error processing files: {e}")
@@ -249,13 +249,14 @@ async def render_video_endpoint(req: RenderRequest):
             with open(result_video_path, "rb") as f:
                 video_b64 = "data:video/webm;base64," + base64.b64encode(f.read()).decode('utf-8')
         
-        # 4. Cleanup
+        # 렌더링 임시 디렉토리 정리
+        # ? 비동기 처리 검토 가능
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
             
         if not video_b64:
-             return {"status": "error", "message": "비디오 렌더링 실패"}
-             
+            return {"status": "error", "message": "비디오 렌더링 실패"}
+            
         return {
             "status": "success",
             "data": {

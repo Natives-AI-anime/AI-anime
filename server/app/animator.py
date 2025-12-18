@@ -19,15 +19,14 @@ class Animator:
     
     def __init__(self):
         """Kling AI 클라이언트 초기화"""
+        # ! API 키 설정 확인 필수
         self.access_key = settings.KLING_ACCESS_KEY
         self.secret_key = settings.KLING_SECRET_KEY
         self.base_url = "https://api-singapore.klingai.com/v1/videos/image2video"
         
     def extract_frames_from_url(self, video_url: str, output_dir: str, frame_skip: int = 1) -> List[str]:
-        """
-        URL에서 비디오를 다운로드 후 프레임을 추출하고 저장합니다.
-        """
-        # 출력 폴더 생성
+        """비디오/URL 프레임 추출 및 저장"""
+        # 출력 디렉토리 생성
         os.makedirs(output_dir, exist_ok=True)
         
         temp_file_path = None
@@ -89,7 +88,8 @@ class Animator:
 
     def _generate_jwt_token(self) -> str:
         """
-        Access Key와 Secret Key로 JWT 토큰 생성 (Kling api docs 참고할 것)
+        Kling AI API 인증용 JWT 생성
+        ? 만료/시작 시간 보안 정책 확인
         """
         import jwt
         import time
@@ -307,10 +307,8 @@ class Animator:
             return None
 
     def generate_frame(self, image_data: bytes, prompt: str) -> bytes:
-        """
-        (Placeholder) 단일 프레임 생성 메서드
-        """
-        # TODO: 실제 이미지 처리 로직 구현
+        """단일 프레임 생성 (미구현)"""
+        # TODO: AI 프레임 생성 로직 구현 필요 !
         return image_data
 
     def _get_slow_motion_keyword(self, target_frame_count: int, duration: int = 5) -> str:
@@ -431,14 +429,15 @@ class Animator:
             height, width, layers = first_frame.shape
             size = (width, height)
             
-            # 파일 확장자에 따른 코덱 선택 및 폴백 전략
+            # 코덱 선택 및 폴백
+            # ? 브라우저 재생 가능 코덱 우선순위 적용
             base, ext = os.path.splitext(output_path)
             ext = ext.lower()
             
-            # 시도할 코덱/확장자 목록 (우선순위 순)
-            # 1. WebM (VP8) - 브라우저 호환성 최우선
-            # 2. WebM (VP9) - 차선책
-            # 3. MP4 (mp4v) - 최후의 수단 (브라우저 재생 불가 가능성 있음, 다운로드용)
+            # 시도 코덱 목록
+            # ! 1. WebM (VP8) - 높은 호환성
+            # ! 2. WebM (VP9) - 고효율
+            # ! 3. MP4 (mp4v) - 최종 폴백
             
             attempts = []
             if ext == '.webm':

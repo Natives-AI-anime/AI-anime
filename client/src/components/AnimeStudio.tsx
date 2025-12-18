@@ -18,30 +18,34 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({
   activeStep,
   onStepChange,
 }) => {
-  // Navigation State (Lifted to parent)
+  // 네비게이션 상태 (부모에게 위임됨)
+  // ! 부모-자식 간 동기화 주의
 
-  // Form State
+  // 폼 입력 관리
   const [projectName, setProjectName] = useState("");
   const [prompt, setPrompt] = useState("");
 
-  // File State
+  // 파일 및 프리뷰 상태
+  // ? 즉각적인 이미지 피드백 제공용
   const [startFile, setStartFile] = useState<File | null>(null);
   const [endFile, setEndFile] = useState<File | null>(null);
   const [startPreview, setStartPreview] = useState<string | null>(null);
   const [endPreview, setEndPreview] = useState<string | null>(null);
 
-  // Request State
+  // 서버 통신 상태
+  // ! 요청 중 중복 클릭 방지 필요
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<any>(null); // TODO: 구체적 타입 정의 필요
   const [error, setError] = useState<string | null>(null);
 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [zipUrl, setZipUrl] = useState<string | null>(null);
 
-  // Unified Player State
+  // 통합 플레이어 제어
+  // ? 프레임 이동 및 재생 관리
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
-  const [fps, setFps] = useState(10); // Playback speed for JS player
+  const [fps, setFps] = useState(30); // 기본 재생 속도는 30fps입니다.
   const sliderRef = React.useRef<HTMLDivElement>(null);
 
   // Revision State
@@ -49,8 +53,13 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({
   const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [revisionPrompt, setRevisionPrompt] = useState("");
+  // 🚫 유효성 검사 경고 상태
+  const [validationWarning, setValidationWarning] = useState<string | null>(
+    null
+  );
 
-  // Playback Loop
+  // 재생 루프 이펙트
+  // ! result 유효성 상시 확인
   useEffect(() => {
     let interval: number;
     if (isPlaying && result?.data?.frames?.length > 0) {
@@ -68,7 +77,8 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({
     return () => clearInterval(interval);
   }, [isPlaying, fps, result]);
 
-  // Sync scroll with current frame
+  // 타임라인 스크롤 동기화
+  // ? 현재 프레임 중앙 정렬
   useEffect(() => {
     if (sliderRef.current && result?.data?.frames) {
       const scrollContainer = sliderRef.current;
@@ -133,7 +143,7 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({
       formData.append("prompt", prompt);
       formData.append("project_name", projectName);
 
-      // Clean base url to remove trailing slash
+      // API 베이스 URL 정리
       const cleanBaseUrl = baseUrl.endsWith("/")
         ? baseUrl.slice(0, -1)
         : baseUrl;
@@ -506,7 +516,19 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({
             {/* Revision Controls Overlay */}
             <div className="absolute top-4 right-4 flex flex-col gap-2 z-20">
               <button
-                onClick={() => setSelectionStart(currentFrameIndex)}
+                onClick={() => {
+                  if (
+                    selectionEnd !== null &&
+                    currentFrameIndex >= selectionEnd
+                  ) {
+                    setValidationWarning(
+                      "Start frame must be before End frame."
+                    );
+                  } else {
+                    setSelectionStart(currentFrameIndex);
+                    setValidationWarning(null);
+                  }
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   selectionStart === currentFrameIndex
                     ? "bg-green-500 text-white"
@@ -516,7 +538,19 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({
                 Set Start
               </button>
               <button
-                onClick={() => setSelectionEnd(currentFrameIndex)}
+                onClick={() => {
+                  if (
+                    selectionStart !== null &&
+                    currentFrameIndex <= selectionStart
+                  ) {
+                    setValidationWarning(
+                      "End frame must be after Start frame."
+                    );
+                  } else {
+                    setSelectionEnd(currentFrameIndex);
+                    setValidationWarning(null);
+                  }
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   selectionEnd === currentFrameIndex
                     ? "bg-red-500 text-white"
@@ -579,50 +613,136 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({
               </div>
             </div>
 
-            {/* Regeneration Panel */}
-            {selectionStart !== null && selectionEnd !== null && (
-              <div className="absolute bottom-24 bg-slate-800/90 backdrop-blur border border-purple-500/30 p-4 rounded-xl flex flex-col gap-3 animate-fadeIn min-w-[300px]">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-slate-300">
-                    <span className="font-bold text-white">Modify Range:</span>{" "}
-                    {Math.min(selectionStart, selectionEnd) + 1} -{" "}
-                    {Math.max(selectionStart, selectionEnd) + 1}
-                  </div>
-                  <button
-                    onClick={() => {
-                      setSelectionStart(null);
-                      setSelectionEnd(null);
-                      setRevisionPrompt("");
-                    }}
-                    className="text-slate-400 hover:text-white"
-                  >
-                    <i className="fas fa-times"></i>
-                  </button>
-                </div>
+            {/* Regeneration Panel (Moved outside) */}
+          </div>
 
+          {/* Regeneration Panel Block */}
+          {(selectionStart !== null || selectionEnd !== null) && (
+            <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex flex-col gap-3 animate-fadeIn shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-slate-300 flex items-center gap-2">
+                  <i className="fas fa-sliders-h text-purple-500"></i>
+                  <span className="font-bold text-white">Modify Range:</span>
+
+                  {/* Start Frame Badge */}
+                  <div className="relative group">
+                    <button
+                      onClick={() =>
+                        selectionStart !== null &&
+                        setCurrentFrameIndex(selectionStart)
+                      }
+                      className={`bg-slate-800 px-2 py-0.5 rounded text-xs font-mono border border-slate-700 transition-colors ${
+                        selectionStart !== null
+                          ? "hover:bg-slate-700 cursor-pointer text-green-400"
+                          : "text-slate-500 cursor-default"
+                      }`}
+                    >
+                      frame {selectionStart !== null ? selectionStart + 1 : "?"}
+                    </button>
+                    {selectionStart !== null && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectionStart(null);
+                          setValidationWarning(null);
+                        }}
+                        className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10"
+                      >
+                        <i className="fas fa-times"></i>
+                      </button>
+                    )}
+                  </div>
+
+                  <i className="fas fa-arrow-right text-xs text-slate-600"></i>
+
+                  {/* End Frame Badge */}
+                  <div className="relative group">
+                    <button
+                      onClick={() =>
+                        selectionEnd !== null &&
+                        setCurrentFrameIndex(selectionEnd)
+                      }
+                      className={`bg-slate-800 px-2 py-0.5 rounded text-xs font-mono border border-slate-700 transition-colors ${
+                        selectionEnd !== null
+                          ? "hover:bg-slate-700 cursor-pointer text-red-400"
+                          : "text-slate-500 cursor-default"
+                      }`}
+                    >
+                      frame {selectionEnd !== null ? selectionEnd + 1 : "?"}
+                    </button>
+                    {selectionEnd !== null && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectionEnd(null);
+                          setValidationWarning(null);
+                        }}
+                        className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10"
+                      >
+                        <i className="fas fa-times"></i>
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectionStart(null);
+                    setSelectionEnd(null);
+                    setRevisionPrompt("");
+                    setValidationWarning(null);
+                  }}
+                  className="text-slate-400 hover:text-white transition-colors"
+                >
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+
+              <div className="flex gap-3">
                 <input
                   type="text"
                   value={revisionPrompt}
                   onChange={(e) => setRevisionPrompt(e.target.value)}
-                  placeholder="Describe changes (optional)..."
-                  className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-purple-500 outline-none"
+                  placeholder="Describe changes (e.g. 'Slow motion', 'Fix face')..."
+                  className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white placeholder-slate-500 focus:border-purple-500 outline-none shadow-inner"
                 />
 
                 <button
                   onClick={handleRegenerate}
-                  disabled={isRegenerating}
-                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                  disabled={
+                    isRegenerating ||
+                    selectionStart === null ||
+                    selectionEnd === null
+                  }
+                  className={`px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-2 ${
+                    isRegenerating ||
+                    selectionStart === null ||
+                    selectionEnd === null
+                      ? "opacity-50 cursor-not-allowed"
+                      : ""
+                  }`}
                 >
                   {isRegenerating ? (
                     <i className="fas fa-circle-notch fa-spin"></i>
                   ) : (
                     <i className="fas fa-wand-magic-sparkles"></i>
                   )}
-                  Regenerate Segment
+                  Regenerate
                 </button>
               </div>
-            )}
-          </div>
+              {/* Helper text / Validation Warning */}
+              {validationWarning ? (
+                <div className="text-[11px] text-amber-400 flex items-center gap-2 pl-1 font-bold animate-pulse">
+                  <i className="fas fa-exclamation-triangle"></i>
+                  {validationWarning}
+                </div>
+              ) : selectionStart === null || selectionEnd === null ? (
+                <div className="text-[11px] text-slate-400 flex items-center gap-2 pl-1">
+                  <i className="fas fa-info-circle text-slate-500"></i>
+                  Select both Start and End frames to enable regeneration.
+                </div>
+              ) : null}
+            </div>
+          )}
 
           {/* Filmstrip Timeline */}
           <div className="h-[220px] shrink-0 bg-slate-900/50 border border-slate-800 rounded-xl p-6 flex flex-col relative">
@@ -638,7 +758,14 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({
             <div
               ref={sliderRef}
               className="flex-1 overflow-x-auto flex items-center gap-2 px-[50%] custom-scrollbar pb-2"
-              style={{ scrollSnapType: "x mandatory" }}
+              style={{ scrollBehavior: isPlaying ? "auto" : "smooth" }}
+              onWheel={(e) => {
+                if (sliderRef.current) {
+                  // 휠(Y) 또는 터치패드(X) 입력을 모두 수평 스크롤로 변환
+                  // 세로 스크롤(휠) 속도를 5배 빠르게 조정
+                  sliderRef.current.scrollLeft += e.deltaY * 5 + e.deltaX;
+                }
+              }}
             >
               {result.data.frames.map((frame: string, idx: number) => {
                 const isSelected =
@@ -662,11 +789,10 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({
                               currentFrameIndex === idx
                                 ? "border-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.6)] z-10 brightness-110"
                                 : isInRange
-                                ? "border-yellow-500/50 opacity-100"
+                                ? "border-indigo-500/30 opacity-100"
                                 : "border-slate-800 opacity-60 hover:opacity-100 hover:border-slate-600"
                             }
                         `}
-                    style={{ scrollSnapAlign: "center" }}
                   >
                     <img
                       src={frame}
@@ -674,7 +800,7 @@ const AnimeStudio: React.FC<AnimeStudioProps> = ({
                       loading="lazy"
                     />
                     {isSelected && (
-                      <div className="absolute inset-0 border-4 border-yellow-500 z-20 pointer-events-none rounded-lg"></div>
+                      <div className="absolute inset-0 border-4 border-indigo-400 z-20 pointer-events-none rounded-lg"></div>
                     )}
                     <div className="absolute bottom-0 left-0 right-0 h-4 bg-black/60 text-[8px] text-white flex items-center justify-center font-mono backdrop-blur-[1px]">
                       {idx + 1}
