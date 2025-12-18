@@ -1,0 +1,29 @@
+# AI-anime Root Gitignore
+
+# Antigravity Rules
+.antigravityrules
+
+# Environments
+.env
+.env.local
+.env.*
+
+# Dependencies
+**/node_modules/
+**/.venv/
+**/venv/
+**/env/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+**/dist/
+**/build/
