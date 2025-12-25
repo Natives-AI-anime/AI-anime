@@ -4,7 +4,7 @@ import AnimeStudio from "./components/AnimeStudio";
 const App: React.FC = () => {
   // Default connection URL for the Anime Service
   const [serviceBaseUrl, setServiceBaseUrl] = useState(
-    import.meta.env.VITE_API_URL || "http://localhost:8000"
+    import.meta.env.VITE_API_URL || "http://140.245.72.199:8000"
   );
   const [step, setStep] = useState<0 | 1 | 2>(0);
 
