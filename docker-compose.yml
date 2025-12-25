@@ -10,6 +10,7 @@ services:
       - "8000:8000"
     environment:
       - ENVIRONMENT=production
+      - PYTHONUNBUFFERED=1
       - DEBUG=False
       - KLING_ACCESS_KEY=${KLING_ACCESS_KEY}
       - KLING_SECRET_KEY=${KLING_SECRET_KEY}
