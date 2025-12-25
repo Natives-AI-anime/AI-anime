@@ -2,24 +2,21 @@ version: "3.8"
 
 services:
   server:
+    image: ${DOCKER_USERNAME}/ai-anime-server:latest
     build:
       context: ./server
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    volumes:
-      - ./server:/app
-      - ./server/generated_frames:/app/generated_frames
     environment:
-      - ENVIRONMENT=development
-      - DEBUG=True
-      # - KLING_ACCESS_KEY=${KLING_ACCESS_KEY}
-      # - KLING_SECRET_KEY=${KLING_SECRET_KEY}
-    env_file:
-      - ./server/config/.env
+      - ENVIRONMENT=production
+      - DEBUG=False
+      - KLING_ACCESS_KEY=${KLING_ACCESS_KEY}
+      - KLING_SECRET_KEY=${KLING_SECRET_KEY}
     restart: always
 
   client:
+    image: ${DOCKER_USERNAME}/ai-anime-client:latest
     build:
       context: ./client
       dockerfile: Dockerfile
