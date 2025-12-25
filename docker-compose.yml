@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./server:/app
+      - ./server/generated_frames:/app/generated_frames
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=True
+      # - KLING_ACCESS_KEY=${KLING_ACCESS_KEY}
+      # - KLING_SECRET_KEY=${KLING_SECRET_KEY}
+    env_file:
+      - ./server/config/.env
+    restart: always
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+    restart: always
