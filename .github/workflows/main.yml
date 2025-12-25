@@ -55,5 +55,5 @@ jobs:
             echo "DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}" > .env
             echo "KLING_ACCESS_KEY=${{ secrets.KLING_ACCESS_KEY }}" >> .env
             echo "KLING_SECRET_KEY=${{ secrets.KLING_SECRET_KEY }}" >> .env
-            docker-compose pull
-            docker-compose up -d
+            docker compose pull
+            docker compose up -d
