@@ -57,3 +57,5 @@ jobs:
             echo "KLING_SECRET_KEY=${{ secrets.KLING_SECRET_KEY }}" >> .env
             docker-compose pull
             docker-compose up -d
+
+#test
